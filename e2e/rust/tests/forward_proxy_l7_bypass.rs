@@ -17,7 +17,7 @@ use openshell_e2e::harness::sandbox::SandboxGuard;
 use tempfile::NamedTempFile;
 use tokio::time::{interval, timeout};
 
-const TEST_SERVER_IMAGE: &str = "python:3.13-alpine";
+const TEST_SERVER_IMAGE: &str = "public.ecr.aws/docker/library/python:3.13-alpine";
 
 struct DockerServer {
     port: u16,
@@ -79,7 +79,7 @@ HTTPServer(("0.0.0.0", 8000), Handler).serve_forever()
 
     async fn wait_until_ready(&self) -> Result<(), String> {
         let container_id = self.container_id.clone();
-        timeout(Duration::from_secs(30), async move {
+        timeout(Duration::from_secs(60), async move {
             let mut tick = interval(Duration::from_millis(500));
             loop {
                 tick.tick().await;
@@ -99,7 +99,7 @@ HTTPServer(("0.0.0.0", 8000), Handler).serve_forever()
             }
         })
         .await
-        .map_err(|_| "docker test server did not become ready within 30s".to_string())
+        .map_err(|_| "docker test server did not become ready within 60s".to_string())
     }
 }
 

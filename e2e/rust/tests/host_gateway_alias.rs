@@ -17,7 +17,7 @@ use tokio::time::{interval, timeout};
 
 const INFERENCE_PROVIDER_NAME: &str = "e2e-host-inference";
 const INFERENCE_PROVIDER_UNREACHABLE_NAME: &str = "e2e-host-inference-unreachable";
-const TEST_SERVER_IMAGE: &str = "python:3.13-alpine";
+const TEST_SERVER_IMAGE: &str = "public.ecr.aws/docker/library/python:3.13-alpine";
 static INFERENCE_ROUTE_LOCK: Mutex<()> = Mutex::new(());
 
 async fn run_cli(args: &[&str]) -> Result<String, String> {
@@ -118,7 +118,7 @@ HTTPServer(("0.0.0.0", 8000), Handler).serve_forever()
 
     async fn wait_until_ready(&self) -> Result<(), String> {
         let container_id = self.container_id.clone();
-        timeout(Duration::from_secs(30), async move {
+        timeout(Duration::from_secs(60), async move {
             let mut tick = interval(Duration::from_millis(500));
             loop {
                 tick.tick().await;
@@ -141,7 +141,7 @@ HTTPServer(("0.0.0.0", 8000), Handler).serve_forever()
         .await
         .map_err(|_| {
             format!(
-                "docker test server {} did not become ready within 30s",
+                "docker test server {} did not become ready within 60s",
                 self.container_id
             )
         })?
