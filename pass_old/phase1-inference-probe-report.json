@@ -1,0 +1,59 @@
+{
+  "mode": "sandbox",
+  "base_url": "https://inference.local",
+  "model": "llama3.2",
+  "total": 2,
+  "passed": 1,
+  "failed": 1,
+  "timing_summary": {
+    "total_duration_ms": 11395,
+    "average_case_duration_ms": 5697.5,
+    "startup_comparison": {
+      "first_case_name": "allowed_chat_completions",
+      "second_case_name": "denied_responses_endpoint",
+      "first_case_duration_ms": 8404,
+      "second_case_duration_ms": 2991,
+      "delta_ms": -5413,
+      "ratio_second_over_first": 0.356
+    }
+  },
+  "generated_at": "2026-03-27T17:57:10.739549+08:00",
+  "results": [
+    {
+      "name": "allowed_chat_completions",
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "expected": [
+        200
+      ],
+      "actual": 200,
+      "pass": true,
+      "started_at": "2026-03-27T17:56:59+08:00",
+      "body_preview": "\u001b[1m\u001b[36mCreated sandbox:\u001b[39m\u001b[0m \u001b[1mamusing-halfbeak\u001b[0m\n\n  \u001b[2m[0.0s]\u001b[0m Requesting compute...\n\u001b[2m[0.2s]\u001b[0m Sandbox allocated\n\u001b[2m[0.8s]\u001b[0m Pulling image ghcr.io/nvidia/openshell-community/sandboxes/base:latest\n\u001b[2m[1.7s]\u001b[0m Image pulled (1.2 GB)\n{\"id\":\"chatcmpl-815\",\"ob",
+      "timing": {
+        "mode": "sandbox",
+        "started_epoch_ms": 1774605419270,
+        "ended_epoch_ms": 1774605427674,
+        "duration_ms": 8404
+      }
+    },
+    {
+      "name": "denied_responses_endpoint",
+      "method": "POST",
+      "path": "/v1/responses",
+      "expected": [
+        403
+      ],
+      "actual": 200,
+      "pass": false,
+      "started_at": "2026-03-27T17:57:07+08:00",
+      "body_preview": "\u001b[1m\u001b[36mCreated sandbox:\u001b[39m\u001b[0m \u001b[1msuccessful-jawfish\u001b[0m\n\n  \u001b[2m[0.0s]\u001b[0m Requesting compute...\n\u001b[2m[0.0s]\u001b[0m Sandbox allocated\n\u001b[2m[0.6s]\u001b[0m Pulling image ghcr.io/nvidia/openshell-community/sandboxes/base:latest\n\u001b[2m[1.4s]\u001b[0m Image pulled (1.2 GB)\n{\"id\":\"resp_580434\",\"o",
+      "timing": {
+        "mode": "sandbox",
+        "started_epoch_ms": 1774605427708,
+        "ended_epoch_ms": 1774605430699,
+        "duration_ms": 2991
+      }
+    }
+  ]
+}

@@ -202,3 +202,5 @@ architecture/plans
 rfc.md
 .worktrees
 .z3-trace
+
+artifacts/
