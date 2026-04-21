@@ -60,9 +60,114 @@ run_cmd() {
   shift 2
   local out="${RAW_DIR}/${case_id}_${step}.txt"
   if "$@" >"${out}" 2>&1; then
+    write_plain_output "${out}"
     return 0
   fi
+  write_plain_output "${out}"
   return 1
+}
+
+write_plain_output() {
+  local source_file="$1"
+  local plain_file="${source_file%.txt}.plain.txt"
+  python3 - <<'PY' "${source_file}" "${plain_file}"
+import pathlib
+import re
+import sys
+
+source = pathlib.Path(sys.argv[1])
+target = pathlib.Path(sys.argv[2])
+text = source.read_bytes().decode("utf-8", "replace")
+plain = re.sub(r"\x1B\[[0-?]*[ -/]*[@-~]", "", text)
+target.write_text(plain, encoding="utf-8")
+PY
+}
+
+extract_curl_exit_code() {
+  local path="$1"
+  python3 - <<'PY' "$path"
+import re, sys
+data = open(sys.argv[1], "rb").read().decode("utf-8", "replace")
+m = re.search(r"curl: \((\d+)\)", data)
+print(m.group(1) if m else "")
+PY
+}
+
+build_policy_decision_hint() {
+  local http_code="$1"
+  local curl_exit="$2"
+  if [[ "${http_code}" == "000" && -n "${curl_exit}" ]]; then
+    echo "policy_deny_or_tunnel_block"
+    return
+  fi
+  if [[ "${http_code}" == "403" ]]; then
+    echo "policy_or_upstream_forbidden"
+    return
+  fi
+  if [[ "${http_code}" =~ ^2[0-9][0-9]$ ]]; then
+    echo "allowed"
+    return
+  fi
+  echo "upstream_or_other_error"
+}
+
+write_http_result_json() {
+  local case_id="$1"
+  local step="$2"
+  local out_file="$3"
+  local http_code="$4"
+  local curl_exit="$5"
+  local decision_hint="$6"
+  local request_file="${RAW_DIR}/${case_id}_${step}.request.txt"
+  local result_file="${RAW_DIR}/${case_id}_${step}.result.json"
+  python3 - <<'PY' "$case_id" "$step" "$out_file" "$http_code" "$curl_exit" "$decision_hint" "$request_file" "$result_file"
+import json
+import pathlib
+import sys
+
+case_id, step, raw_output_file, http_code, curl_exit_code, hint, request_file, result_file = sys.argv[1:]
+request_path = pathlib.Path(request_file)
+payload = {
+    "case_id": case_id,
+    "step": step,
+    "http_code": http_code,
+    "curl_exit_code": int(curl_exit_code) if curl_exit_code else None,
+    "policy_decision_hint": hint,
+    "request_file": request_file,
+    "raw_output_file": raw_output_file,
+    "request_command": request_path.read_text(encoding="utf-8").strip() if request_path.exists() else "",
+}
+pathlib.Path(result_file).write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+PY
+}
+
+run_http_probe() {
+  local case_id="$1"
+  local step="$2"
+  local url="$3"
+  local method="$4"
+  local body="${5:-}"
+  local out_file="${RAW_DIR}/${case_id}_${step}.txt"
+  local request_file="${RAW_DIR}/${case_id}_${step}.request.txt"
+  local cmd
+  if [[ -n "${body}" ]]; then
+    cmd="curl -sS --http1.1 -o /dev/null -w '%{http_code}' --max-time 20 -X ${method} '${url}' -H 'Content-Type: application/json' -d '${body}'"
+  else
+    cmd="curl -sS --http1.1 -o /dev/null -w '%{http_code}' --max-time 20 -X ${method} '${url}'"
+  fi
+  printf "%s\n" "${cmd}" > "${request_file}"
+  sandbox_exec "${case_id}" "${step}" "${cmd}" > "${out_file}" 2>&1 || true
+  write_plain_output "${out_file}"
+
+  local http_code
+  http_code="$(first_http_code "${out_file}")"
+  local curl_exit_code
+  curl_exit_code="$(extract_curl_exit_code "${out_file}")"
+  local decision_hint
+  decision_hint="$(build_policy_decision_hint "${http_code}" "${curl_exit_code}")"
+  write_http_result_json "${case_id}" "${step}" "${out_file}" "${http_code}" "${curl_exit_code}" "${decision_hint}"
+
+  printf "%s" "${http_code}"
 }
 
 sandbox_exec() {
@@ -94,11 +199,8 @@ expect_http_code_any() {
   local method="$4"
   shift 4
   local expected_codes=("$@")
-  local out_file="${RAW_DIR}/${case_id}_${step}.txt"
-  local cmd="curl -sS --http1.1 -o /dev/null -w '%{http_code}' --max-time 20 -X ${method} '${url}'"
-  sandbox_exec "${case_id}" "${step}" "${cmd}" > "${out_file}" 2>&1 || true
   local got
-  got="$(first_http_code "${out_file}")"
+  got="$(run_http_probe "${case_id}" "${step}" "${url}" "${method}")"
   for code in "${expected_codes[@]}"; do
     if [[ "${got}" == "${code}" ]]; then
       return 0
@@ -125,16 +227,8 @@ expect_http_code() {
   local method="$4"
   local expected="$5"
   local body="${6:-}"
-  local out_file="${RAW_DIR}/${case_id}_${step}.txt"
-  local cmd
-  if [[ -n "${body}" ]]; then
-    cmd="curl -sS --http1.1 -o /dev/null -w '%{http_code}' --max-time 20 -X ${method} '${url}' -H 'Content-Type: application/json' -d '${body}'"
-  else
-    cmd="curl -sS --http1.1 -o /dev/null -w '%{http_code}' --max-time 20 -X ${method} '${url}'"
-  fi
-  sandbox_exec "${case_id}" "${step}" "${cmd}" > "${out_file}" 2>&1 || true
   local got
-  got="$(first_http_code "${out_file}")"
+  got="$(run_http_probe "${case_id}" "${step}" "${url}" "${method}" "${body}")"
   [[ "${got}" == "${expected}" ]]
 }
 
@@ -144,11 +238,8 @@ expect_not_http_code() {
   local url="$3"
   local method="$4"
   local forbidden="$5"
-  local out_file="${RAW_DIR}/${case_id}_${step}.txt"
-  local cmd="curl -sS --http1.1 -o /dev/null -w '%{http_code}' --max-time 20 -X ${method} '${url}'"
-  sandbox_exec "${case_id}" "${step}" "${cmd}" > "${out_file}" 2>&1 || true
   local got
-  got="$(first_http_code "${out_file}")"
+  got="$(run_http_probe "${case_id}" "${step}" "${url}" "${method}")"
   [[ "${got}" != "${forbidden}" ]]
 }
 
@@ -451,7 +542,35 @@ case_hostless_allowed_ips_schema() {
       - { path: /usr/bin/curl }
 YAML
   } > "${file}"
-  apply_policy "c12" "${file}"
+  apply_policy "c12" "${file}" || return 1
+
+  local invalid_file="${POLICY_DIR}/c12_hostless_allowed_ips_invalid.yaml"
+  cat > "${invalid_file}" <<'YAML'
+version: invalid
+filesystem_policy:
+  include_workdir: true
+  read_only: [/usr, /lib, /proc, /dev/urandom, /app, /etc, /var/log]
+  read_write: [/sandbox, /tmp, /dev/null]
+landlock:
+  compatibility: best_effort
+process:
+  run_as_user: sandbox
+  run_as_group: sandbox
+network_policies:
+  private_hostless_invalid:
+    name: private_hostless_invalid
+    endpoints:
+      - port: 8080
+        allowed_ips:
+          - "10.0.5.0/24"
+    binaries:
+      - { path: /usr/bin/curl }
+YAML
+
+  if run_cmd "c12" "policy_set_invalid_schema" openshell policy set "${SANDBOX_NAME}" --policy "${invalid_file}" --wait; then
+    return 1
+  fi
+  return 0
 }
 
 generate_report() {
@@ -499,6 +618,9 @@ generate_report() {
     echo
     echo "- Run log: \`${RAW_DIR}/run.log\`"
     echo "- Command outputs: \`${RAW_DIR}/*.txt\`"
+    echo "- ANSI-stripped outputs: \`${RAW_DIR}/*.plain.txt\`"
+    echo "- Request command snapshots: \`${RAW_DIR}/*.request.txt\`"
+    echo "- Structured HTTP probe results: \`${RAW_DIR}/*.result.json\`"
     echo "- Generated policy files: \`${POLICY_DIR}/*.yaml\`"
   } > "${REPORT_FILE}"
 }
@@ -534,6 +656,9 @@ main() {
     log "Failed to create sandbox"
     exit 1
   fi
+
+  write_plain_output "${RAW_DIR}/preflight_sandbox_create.txt"
+  write_plain_output "${RAW_DIR}/preflight_sandbox_list.txt"
 
   run_case "c01" "L4 allow/deny" case_l4_allow_deny || true
   run_case "c02" "L7 read-only preset" case_l7_read_only || true

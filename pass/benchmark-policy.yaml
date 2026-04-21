@@ -1,0 +1,100 @@
+version: 1
+
+# Benchmark policy for opencode serve inside OpenShell sandbox.
+# 衍生自 pass_old/qa-realtime-policy.yaml；保留 mcp.exa.ai 的 L7 規則與
+# opencode serve 所需 provider / runtime endpoints。
+
+filesystem_policy:
+  include_workdir: true
+  read_only:
+    - /usr
+    - /lib
+    - /proc
+    - /dev/urandom
+    - /app
+    - /etc
+    - /var/log
+  read_write:
+    - /sandbox
+    - /tmp
+    - /dev/null
+
+landlock:
+  compatibility: best_effort
+
+process:
+  run_as_user: sandbox
+  run_as_group: sandbox
+
+network_policies:
+  opencode:
+    name: opencode
+    endpoints:
+      - host: registry.npmjs.org
+        port: 443
+      - host: opencode.ai
+        port: 443
+      - host: integrate.api.nvidia.com
+        port: 443
+      # GitHub API for Q2 (latest commit lookup)
+      - host: api.github.com
+        port: 443
+        protocol: rest
+        tls: terminate
+        enforcement: enforce
+        access: read-only
+      - host: github.com
+        port: 443
+        protocol: rest
+        tls: terminate
+        enforcement: enforce
+        access: read-only
+      # Realtime FX/market endpoints (legacy, 留作 egress probe / fallback)
+      - host: www.twse.com.tw
+        port: 443
+        protocol: rest
+        tls: terminate
+        enforcement: enforce
+        access: read-only
+      - host: api.exchangerate.host
+        port: 443
+        protocol: rest
+        tls: terminate
+        enforcement: enforce
+        access: read-only
+      - host: rate.bot.com.tw
+        port: 443
+        protocol: rest
+        tls: terminate
+        enforcement: enforce
+        access: read-only
+      # Exa web search endpoints used by opencode tooling
+      - host: api.exa.ai
+        port: 443
+        protocol: rest
+        tls: terminate
+        enforcement: enforce
+        access: read-only
+      - host: exa.ai
+        port: 443
+        protocol: rest
+        tls: terminate
+        enforcement: enforce
+        access: read-only
+      - host: mcp.exa.ai
+        port: 443
+        protocol: rest
+        tls: terminate
+        enforcement: enforce
+        rules:
+          - allow:
+              method: POST
+              path: /mcp
+          - allow:
+              method: GET
+              path: /**
+    binaries:
+      - path: /usr/lib/node_modules/opencode-ai/bin/.opencode
+      - path: /usr/bin/node
+      - path: /usr/local/bin/opencode
+      - path: /usr/bin/curl
