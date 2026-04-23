@@ -1,0 +1,63 @@
+- NVIDIA OpenShell: Al Agent 安全沙箱架構總覽
+  - 核心概述
+    - 自主 AI Agent 安全運行環境
+    - 保護數據、憑證與基礎設施
+    - 基於聲明式 YAML 政策治理
+    - Alpha 階段 (單人模式)
+      - 機制: Landlock LSM
+    - 文件系統 (Filesystem)
+      - 特性: 建立時鎖定 (靜態)
+      - 目的: 防止讀寫授權外路徑
+  - 四層防護體系
+    - 程序 (Process)
+      - 機制: Seccomp BPF
+      - 特性: 建立時鎖定 (靜態)
+      - 目的: 阻斷權限提升與危險系統呼叫
+    - 網路 (Network)
+      - 機制: HTTP CONNECT 代理 + OPA
+      - 特性: 運行時熱重載 (動態)
+      - 目的: 精確控管 L4/L7 流量
+    - 推理 (Inference)
+      - 機制: Privacy Router (inference.local)
+      - 特性: 運行時熱重載 (動態)
+      - 目的: 憑證剝離與自動注入
+  - 核心元件
+    - Gateway (閘道器)
+      - 控制面 API (openshell-server)
+      - 協調沙箱生命週期
+      - 身份驗證與憑證管理 (mTLS)
+    - Sandbox (沙箱)
+      - 隔離運行環境 (openshell-sandbox)
+      - 容器監督與出口路由
+      - 基於 K3s Pod 或 MicroVM
+    - Policy Engine (策略引擎)
+      - Rego 規則評估 (OPA/Regorus)
+      - 執行聲明式約束
+  - 執行模式
+    - Docker 模式
+      - 共用宿主內核
+      - 啟動快速
+      - 適合 CI 與開發
+    - openshell-vm (v0.0.26+)
+      - 機制: libkrun MicroVM
+      - 獨立 Guest Kernel
+      - 強大的硬體級隔離
+      - 適合高安全/Edge 場景
+  - 開發與維運
+    - Agent-First 模型
+      - 內建 Agent 技能 (.agents/skills)
+      - 自動化分流與構建
+    - 工具鏈
+      - mise: 任務執行與管理
+      - TUI: 即時終端儀表板
+      - CLI: sandbox/policy/provider 指令
+  - 關鍵指令
+    - 支持 Agent
+      - Claude Code
+      - OpenCode
+      - GitHub Copilot CLI
+    - sandbox create: 啟動沙箱
+      - Ollama (Community)
+    - policy set: 更新策略
+    - provider create: 建立憑證
+    - term: 啟動 TUI
